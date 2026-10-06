@@ -1,5 +1,5 @@
 import { Router } from "express";
-import * as agent from "../playit/agent.js";
+import * as playitAgent from "../playit/agent.js";
 import { log } from "../logger.js";
 
 const router = Router();
@@ -10,8 +10,8 @@ const router = Router();
  */
 router.get("/", async (req, res) => {
   try {
-    const s = await agent.status();
-    const uptime = s.startedAt ? Math.floor((Date.now() - s.startedAt) / 1000) : 0;
+    const s = await playitAgent.status();
+    const uptimeSeconds = s.startedAt ? Math.floor((Date.now() - s.startedAt) / 1000) : 0;
 
     res.json({
       claimed: s.status === "connected",
@@ -21,8 +21,8 @@ router.get("/", async (req, res) => {
       port: s.port,
       region: s.region,
       latency: s.latency,
-      uptime: uptime > 0 ? `${Math.floor(uptime / 3600)}h ${Math.floor((uptime % 3600) / 60)}m` : null,
-      uptimeSeconds: uptime,
+      uptime: uptimeSeconds,
+      uptimeSeconds: uptimeSeconds,
       error: s.lastError,
       status: s.status,
     });
@@ -38,11 +38,8 @@ router.get("/", async (req, res) => {
  */
 router.post("/regenerate", async (req, res) => {
   try {
-    const result = await agent.regenerate();
-    res.json({
-      success: true,
-      claimUrl: result.claimUrl,
-    });
+    const result = await playitAgent.regenerate();
+    res.json(result);
   } catch (err) {
     log.error("Failed to regenerate Playit claim link:", err.message);
     res.status(500).json({ error: err.message || "Failed to regenerate claim link" });
@@ -55,11 +52,8 @@ router.post("/regenerate", async (req, res) => {
  */
 router.post("/retry", async (req, res) => {
   try {
-    if (!agent.isRunning()) {
-      await agent.start();
-    } else {
-      await agent.reconnect();
-    }
+    await playitAgent.stop();
+    await playitAgent.start();
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: err.message || "Failed to retry connection" });
@@ -72,7 +66,7 @@ router.post("/retry", async (req, res) => {
  */
 router.post("/reconnect", async (req, res) => {
   try {
-    await agent.reconnect();
+    await playitAgent.reconnect();
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: err.message || "Failed to reconnect tunnel" });

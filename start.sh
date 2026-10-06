@@ -111,13 +111,16 @@ if ! command -v playit >/dev/null 2>&1; then
     || echo "[playit] WARN: install failed"
 fi
 
-if [ -n "$PLAYIT_SECRET" ]; then
+  # Ensure playit config dir exists
   mkdir -p "$HOME/.config/playit_gg"
-  cat > "$HOME/.config/playit_gg/playit.toml" <<EOF
+
+  # If PLAYIT_SECRET is set, write it to playit.toml
+  if [ -n "$PLAYIT_SECRET" ]; then
+    cat > "$HOME/.config/playit_gg/playit.toml" <<EOF
 secret_key = "$PLAYIT_SECRET"
 EOF
-  echo "[playit] Secret configured"
-fi
+    echo "[playit] Secret configured in playit.toml"
+  fi
 
 # ─────────────────────────────────────
 # 6. START MINECRAFT (background)
