@@ -16,15 +16,33 @@ mkdir -p "$MC_DIR/plugins" "$MC_DIR/plugins-disabled" \
 if [ ! -f "$MC_DIR/server.jar" ]; then
   MC_VERSION="${MC_VERSION:-1.20.4}"
   echo "[setup] Fetching latest Paper $MC_VERSION build..."
-  BUILD_JSON=$(curl -fsSL \
-    "https://api.papermc.io/v2/projects/paper/versions/$MC_VERSION")
-  LATEST=$(echo "$BUILD_JSON" | grep -oE '"builds":\[[0-9,]+' | \
-           grep -oE '[0-9]+$')
-  if [ -z "$LATEST" ]; then
-    echo "[setup] Failed to fetch build list. Aborting." >&2
+
+  # Try new PaperMC API (fill.papermc.io/v3)
+  LATEST=$(curl -fsSL \
+    "https://fill.papermc.io/v3/projects/paper/versions/$MC_VERSION/builds/latest" \
+    | grep -oE '"id":[0-9]+' | head -1 | grep -oE '[0-9]+' || true)
+
+  if [ -n "$LATEST" ]; then
+    JAR_URL=$(curl -fsSL \
+      "https://fill.papermc.io/v3/projects/paper/versions/$MC_VERSION/builds/$LATEST" \
+      | grep -oE '"url":"[^"]+\.jar"' | head -1 | sed 's/"url":"//;s/"$//' || true)
+  fi
+
+  # Fallback to direct download URL pattern if v3 lookup fails
+  if [ -z "$JAR_URL" ]; then
+    echo "[setup] Using Paper v2 API fallback for $MC_VERSION..."
+    BUILD_JSON=$(curl -fsSL "https://api.papermc.io/v2/projects/paper/versions/$MC_VERSION" || true)
+    LATEST=$(echo "$BUILD_JSON" | grep -oE '"builds":\[[0-9,]+' | grep -oE '[0-9]+$' || true)
+    if [ -n "$LATEST" ]; then
+      JAR_URL="https://api.papermc.io/v2/projects/paper/versions/$MC_VERSION/builds/$LATEST/downloads/paper-$MC_VERSION-$LATEST.jar"
+    fi
+  fi
+
+  if [ -z "$JAR_URL" ]; then
+    echo "[setup] ERROR: Could not determine Paper jar download URL" >&2
     exit 1
   fi
-  JAR_URL="https://api.papermc.io/v2/projects/paper/versions/$MC_VERSION/builds/$LATEST/downloads/paper-$MC_VERSION-$LATEST.jar"
+
   curl -fsSL "$JAR_URL" -o "$MC_DIR/server.jar"
   echo "[setup] Downloaded Paper build $LATEST"
 fi
