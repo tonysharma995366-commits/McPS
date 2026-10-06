@@ -28,6 +28,7 @@ export default function Dashboard({ showToast, onStatusChange }) {
   const { data: status, loading, error, refetch } = useFetch("/api/status");
   const { data: playit } = useFetch("/api/playit");
   const { data: logsData } = useFetch("/api/logs?limit=6");
+  const { data: versionsSummary } = useFetch("/api/versions");
 
   const [actionInProgress, setActionInProgress] = useState(null);
   const [performanceLoading, setPerformanceLoading] = useState(false);
@@ -298,6 +299,19 @@ export default function Dashboard({ showToast, onStatusChange }) {
                 <Copy size={13} className="text-[#9ca3af] group-hover:text-[#4ade80] transition-colors" />
               )}
             </button>
+          </div>
+
+          <div className="border-t border-[#262a33] my-3" />
+
+          {/* Version & Bedrock Row */}
+          <div className="flex items-center justify-between text-[12px]">
+            <span className="text-[#9ca3af] font-medium">Version</span>
+            <Link
+              to="/versions"
+              className="text-[#4ade80] font-mono hover:underline flex items-center gap-1"
+            >
+              <span>Paper {versionsSummary?.current?.version || "1.20.4"} {versionsSummary?.geyser?.installed ? "· Bedrock ON" : ""}</span>
+            </Link>
           </div>
         </Card>
       )}

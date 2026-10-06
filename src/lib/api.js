@@ -4,6 +4,7 @@
  */
 
 import { API_URL, WS_URL } from './config.js';
+import { errorMsg } from './safe.js';
 
 const BASE_URL = API_URL;
 
@@ -55,14 +56,9 @@ async function request(endpoint, options = {}) {
       if (consecutiveFailures >= 3) {
         notifyNetworkStatus(true);
       }
-      let msg = "Request failed";
-      try {
-        const data = await res.json();
-        msg = data?.message ?? data?.error ?? `HTTP ${res.status}`;
-        if (typeof msg !== "string") msg = JSON.stringify(msg);
-      } catch {
-        msg = `HTTP ${res.status}`;
-      }
+      let data = null;
+      try { data = await res.json(); } catch {}
+      const msg = errorMsg(data) || `HTTP ${res.status}`;
       throw new Error(msg);
     }
 
@@ -239,13 +235,9 @@ export const api = {
             resolve({ success: true });
           }
         } else {
-          let errMsg = `Upload failed with status ${xhr.status}`;
-          try {
-            const err = JSON.parse(xhr.responseText);
-            if (err && err.error) errMsg = err.error;
-          } catch {
-            // ignore
-          }
+          let parsed = null;
+          try { parsed = JSON.parse(xhr.responseText); } catch {}
+          const errMsg = errorMsg(parsed) || `Upload failed with status ${xhr.status}`;
           reject(new Error(errMsg));
         }
       };
@@ -292,13 +284,9 @@ export const api = {
             resolve({ success: true });
           }
         } else {
-          let errMsg = `Upload failed with status ${xhr.status}`;
-          try {
-            const err = JSON.parse(xhr.responseText);
-            if (err && err.error) errMsg = err.error;
-          } catch {
-            // ignore
-          }
+          let parsed = null;
+          try { parsed = JSON.parse(xhr.responseText); } catch {}
+          const errMsg = errorMsg(parsed) || `Upload failed with status ${xhr.status}`;
           reject(new Error(errMsg));
         }
       };

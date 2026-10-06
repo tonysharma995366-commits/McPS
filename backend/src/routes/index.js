@@ -8,6 +8,7 @@ import pluginsRouter from "./plugins.js";
 import backupsRouter from "./backups.js";
 import worldRouter from "./world.js";
 import propertiesRouter from "./properties.js";
+import versionsRouter from "./versions.js";
 
 const apiRouter = Router();
 
@@ -37,5 +38,8 @@ apiRouter.use("/world", worldRouter);
 
 // ── Server Properties Routes (/api/properties/*) ──
 apiRouter.use("/properties", propertiesRouter);
+
+// ── Versions Management Routes (/api/versions/*) ──
+apiRouter.use("/versions", versionsRouter);
 
 export default apiRouter;

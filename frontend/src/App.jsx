@@ -20,6 +20,7 @@ const Plugins = lazy(() => import('./pages/Plugins.jsx'));
 const Settings = lazy(() => import('./pages/Settings.jsx'));
 const Backups = lazy(() => import('./pages/Backups.jsx'));
 const Properties = lazy(() => import('./pages/Properties.jsx'));
+const Versions = lazy(() => import('./pages/Versions.jsx'));
 const About = lazy(() => import('./pages/About.jsx'));
 const Diagnostics = lazy(() => import('./pages/Diagnostics.jsx'));
 
@@ -42,6 +43,8 @@ function getRouteTitle(pathname) {
       return 'Backups';
     case '/properties':
       return 'Server Properties';
+    case '/versions':
+      return 'Versions & Bedrock';
     case '/about':
       return 'App Info';
     case '/diagnostics':
@@ -177,6 +180,14 @@ function MainLayout() {
                 element={
                   <PageWrapper>
                     <Properties showToast={showToast} />
+                  </PageWrapper>
+                }
+              />
+              <Route
+                path="/versions"
+                element={
+                  <PageWrapper>
+                    <Versions showToast={showToast} />
                   </PageWrapper>
                 }
               />

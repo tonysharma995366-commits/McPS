@@ -1,9 +1,9 @@
 import React from "react";
 import { AlertTriangle } from "lucide-react";
-import { safeErrorMessage } from "../lib/safeString.js";
+import { errorMsg } from "../lib/safe.js";
 
 export function ErrorCard({ message, onRetry }) {
-  const safeMsg = safeErrorMessage(message);
+  const safeMsg = errorMsg(message);
   return (
     <div className="rounded-[12px] bg-[#1a1d24] border border-[#ef4444]/40 p-4 select-none">
       <div className="flex items-start gap-3">

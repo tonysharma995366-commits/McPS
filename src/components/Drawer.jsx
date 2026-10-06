@@ -1,11 +1,12 @@
 import React, { useEffect, memo } from 'react';
 import { NavLink } from 'react-router-dom';
-import { Globe, Archive, SlidersHorizontal, Info, Stethoscope, LogOut, X } from 'lucide-react';
+import { Globe, Archive, SlidersHorizontal, Layers, Info, Stethoscope, LogOut, X } from 'lucide-react';
 
 const SECONDARY_ITEMS = [
   { label: 'World & Settings', icon: Globe, path: '/settings' },
   { label: 'Backups', icon: Archive, path: '/backups' },
   { label: 'Server Properties', icon: SlidersHorizontal, path: '/properties' },
+  { label: 'Versions & Bedrock', icon: Layers, path: '/versions' },
 ];
 
 /**
