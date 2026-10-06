@@ -76,7 +76,7 @@ export default function GeyserCard({ geyser, onRefresh, showToast }) {
             Bedrock Support (Geyser)
           </h3>
           <p className="text-[11.5px] text-[#9ca3af] mt-0.5">
-            Allow Minecraft Bedrock Edition players (Mobile, Console, Windows) to join
+            Allow Minecraft Pocket Edition / Bedrock players (v{geyser?.bedrockVersion || "1.26.52.3"}) to join
           </p>
         </div>
       </div>
@@ -108,6 +108,13 @@ export default function GeyserCard({ geyser, onRefresh, showToast }) {
                 {floodgateInstalled ? "✓ Installed" : "Optional"}
               </span>
             </div>
+          </div>
+
+          <div className="p-2.5 rounded-[8px] bg-[#0f1115] border border-[#262a33] flex items-center justify-between">
+            <span className="text-[#9ca3af]">Pocket Edition Support</span>
+            <span className="text-[#60a5fa] font-mono font-medium">
+              v{geyser?.bedrockVersion || "1.26.52.3"}
+            </span>
           </div>
 
           <div>

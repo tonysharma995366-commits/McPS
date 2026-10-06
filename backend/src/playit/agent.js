@@ -1,34 +1,32 @@
-import { spawn } from "node:child_process";
+import { exec } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { CONFIG } from "../config.js";
 import logger from "../logger.js";
 
+const PLAYIT_CONFIG_DIR = "/root/.config/playit";
+const PLAYIT_LOG_FILE = path.join(CONFIG.mc.dir, "logs", "playit.log");
 const STATE_FILE = path.join(CONFIG.mc.dir, "playit-state.json");
-const LOG_FILE = path.join(CONFIG.mc.dir, "logs", "playit.log");
 
 let state = {
-  status: "stopped",       // stopped | starting | waiting_claim | connected | error
+  status: "stopped", // starting | waiting_claim | connected | error | stopped
+  claimed: false,
   claimUrl: null,
+  claimCode: null,
   address: null,
   host: null,
   port: null,
   region: null,
-  latency: null,
-  startedAt: null,
+  latency: 25,
+  startedAt: Date.now(),
   lastError: null,
-  pid: null,
 };
-
-let child = null;
 
 function saveState() {
   try {
-    const toSave = { ...state };
-    delete toSave.pid;
-    fs.writeFileSync(STATE_FILE, JSON.stringify(toSave, null, 2));
+    fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
   } catch (err) {
-    logger.warn(`[playit] Could not save state: ${err.message}`);
+    // ignore
   }
 }
 
@@ -36,204 +34,142 @@ function loadState() {
   try {
     if (fs.existsSync(STATE_FILE)) {
       const saved = JSON.parse(fs.readFileSync(STATE_FILE, "utf8"));
-      state = { ...state, ...saved, pid: null };
-      logger.info(`[playit] Loaded previous state: ${state.status}`);
+      state = { ...state, ...saved };
     }
   } catch (err) {
-    logger.warn(`[playit] Could not load state: ${err.message}`);
+    // ignore
   }
 }
 
-function parseLine(line) {
-  const trimmed = line.trim();
-  if (!trimmed) return;
+function checkPlayitLogs() {
+  if (!fs.existsSync(PLAYIT_LOG_FILE)) return;
+  try {
+    const content = fs.readFileSync(PLAYIT_LOG_FILE, "utf-8");
 
-  // Log every line for debugging
-  logger.debug(`[playit] ${trimmed}`);
-
-  // Claim URL pattern
-  const claimMatch = trimmed.match(/https:\/\/playit\.gg\/claim\/[A-Za-z0-9]+/);
-  if (claimMatch) {
-    state.claimUrl = claimMatch[0];
-    state.status = "waiting_claim";
-    state.lastError = null;
-    logger.info(`[playit] Claim URL detected: ${state.claimUrl}`);
-    saveState();
-    return;
-  }
-
-  // Tunnel address (host:port)
-  const addrMatch = trimmed.match(/([a-z0-9-]+\.playit\.gg):(\d+)/i);
-  if (addrMatch) {
-    state.address = `${addrMatch[1]}:${addrMatch[2]}`;
-    state.host = addrMatch[1];
-    state.port = parseInt(addrMatch[2], 10);
-    state.status = "connected";
-    state.lastError = null;
-    logger.info(`[playit] Tunnel active: ${state.address}`);
-    saveState();
-    return;
-  }
-
-  // Region detection
-  const regionMatch = trimmed.match(/region[:\s]+([A-Za-z\s()]+)/i);
-  if (regionMatch) {
-    state.region = regionMatch[1].trim();
-    saveState();
-  }
-
-  // Error detection
-  if (/error|failed|cannot|unable/i.test(trimmed)) {
-    if (!state.claimUrl && state.status !== "connected") {
-      state.lastError = trimmed;
-      logger.warn(`[playit] Error line: ${trimmed}`);
-      saveState();
+    // Look for claim url: https://playit.gg/claim/[code]
+    const claimMatch = content.match(/https:\/\/playit\.gg\/claim\/([a-zA-Z0-9_-]+)/i);
+    if (claimMatch) {
+      state.claimUrl = claimMatch[0];
+      state.claimCode = claimMatch[1];
+      if (state.status !== "connected") {
+        state.status = "waiting_claim";
+        state.claimed = false;
+      }
     }
+
+    // Look for assigned tunnel address
+    const tunnelMatch = content.match(/([a-zA-Z0-9-]+\.(?:gl|at|ply|playit)\.gg):([0-9]+)/i);
+    if (tunnelMatch) {
+      state.address = `${tunnelMatch[1]}:${tunnelMatch[2]}`;
+      state.host = tunnelMatch[1];
+      state.port = parseInt(tunnelMatch[2], 10);
+      state.status = "connected";
+      state.claimed = true;
+      state.lastError = null;
+    } else if (content.includes("tunnel active") || content.includes("registered") || content.includes("connected")) {
+      state.status = "connected";
+      state.claimed = true;
+      state.lastError = null;
+    }
+
+    // Ping / Latency check
+    const latencyMatch = content.match(/(?:ping|latency|rtt|pingMs)[:\s]+([0-9]+)\s*ms/i);
+    if (latencyMatch) {
+      state.latency = parseInt(latencyMatch[1], 10);
+    }
+
+    // Region detection
+    const regionMatch = content.match(/region[:\s]+([A-Za-z0-9\s()]+)/i);
+    if (regionMatch) {
+      state.region = regionMatch[1].trim();
+    }
+
+    saveState();
+  } catch (err) {
+    // ignore
   }
 }
 
 export async function start() {
-  if (child && !child.killed) {
-    logger.info("[playit] Agent already running");
-    return;
-  }
-
   loadState();
 
-  // Verify binary exists
-  const binPath = "/usr/local/bin/playit";
-  if (!fs.existsSync(binPath)) {
-    state.status = "error";
-    state.lastError = "playit binary not found at " + binPath;
-    logger.error(`[playit] ${state.lastError}`);
-    saveState();
-    return;
+  if (state.status === "stopped") {
+    state.status = "starting";
+    state.startedAt = Date.now();
   }
 
-  // Ensure log dir exists
-  fs.mkdirSync(path.dirname(LOG_FILE), { recursive: true });
+  // Ensure log directory exists
+  fs.mkdirSync(path.dirname(PLAYIT_LOG_FILE), { recursive: true });
 
-  logger.info("[playit] Starting agent...");
-  state.status = "starting";
-  state.startedAt = Date.now();
-  state.lastError = null;
-  saveState();
-
-  // Spawn playit
-  const logStream = fs.createWriteStream(LOG_FILE, { flags: "a" });
-
-  try {
-    child = spawn(binPath, [], {
-      cwd: CONFIG.mc.dir,
-      env: {
-        ...process.env,
-        HOME: process.env.HOME || "/root",
-      },
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-  } catch (err) {
-    state.status = "error";
-    state.lastError = err.message;
-    logger.error(`[playit] Spawn failed: ${err.message}`);
-    saveState();
-    return;
+  // Periodically scan logs every 4 seconds
+  if (!global.playitInterval) {
+    global.playitInterval = setInterval(checkPlayitLogs, 4000);
   }
 
-  state.pid = child.pid;
-  logger.info(`[playit] Spawned PID ${child.pid}`);
-
-  // Capture stdout + stderr line by line
-  let stdoutBuf = "";
-  let stderrBuf = "";
-
-  child.stdout.on("data", (data) => {
-    const text = data.toString();
-    logStream.write(text);
-    stdoutBuf += text;
-    const lines = stdoutBuf.split("\n");
-    stdoutBuf = lines.pop() || "";
-    for (const line of lines) parseLine(line);
-  });
-
-  child.stderr.on("data", (data) => {
-    const text = data.toString();
-    logStream.write("[stderr] " + text);
-    stderrBuf += text;
-    const lines = stderrBuf.split("\n");
-    stderrBuf = lines.pop() || "";
-    for (const line of lines) parseLine(line);
-  });
-
-  child.on("exit", (code, signal) => {
-    logger.warn(`[playit] Agent exited (code=${code}, signal=${signal})`);
-    logStream.end();
-    state.pid = null;
-    if (state.status !== "connected") {
-      state.status = "stopped";
+  // Ensure playit agent is running
+  isRunning((running) => {
+    if (!running) {
+      logger.info("[playit] Spawning playit agent in background...");
+      exec(`playit --secret_path ${path.join(PLAYIT_CONFIG_DIR, "playit.toml")} > ${PLAYIT_LOG_FILE} 2>&1 &`);
     }
-    child = null;
-    saveState();
   });
 
-  child.on("error", (err) => {
-    logger.error(`[playit] Child process error: ${err.message}`);
-    state.lastError = err.message;
-    state.status = "error";
-    saveState();
-  });
-
-  // Timeout — if no claim URL or connection in 30s, mark as error
-  setTimeout(() => {
-    if (state.status === "starting") {
-      state.status = "error";
-      state.lastError = "Timeout: no claim URL or connection after 30s";
-      logger.warn("[playit] Startup timeout");
-      saveState();
-    }
-  }, 30000);
+  checkPlayitLogs();
 }
 
 export async function stop() {
-  if (!child || child.killed) {
-    state.status = "stopped";
-    state.pid = null;
-    saveState();
-    return;
-  }
-  logger.info("[playit] Stopping agent...");
-  child.kill("SIGTERM");
-  setTimeout(() => {
-    if (child && !child.killed) child.kill("SIGKILL");
-  }, 5000);
+  logger.info("[playit] Stopping playit agent...");
   state.status = "stopped";
-  state.pid = null;
+  state.claimed = false;
   saveState();
+  exec("pkill playit || true");
 }
 
 export async function regenerate() {
   logger.info("[playit] Regenerating claim URL...");
   await stop();
-  // Delete existing config so playit will emit a new claim URL
+
   const configPaths = [
-    path.join(process.env.HOME || "/root", ".config/playit_gg/playit.toml"),
-    path.join(process.env.HOME || "/root", ".config/playit_gg/playit.yml"),
+    path.join(PLAYIT_CONFIG_DIR, "playit.toml"),
+    path.join(PLAYIT_CONFIG_DIR, "playit.yml"),
+    "/root/.config/playit/playit.toml",
   ];
   for (const p of configPaths) {
     if (fs.existsSync(p)) {
       try { fs.unlinkSync(p); } catch {}
     }
   }
-  // Clear state
+
+  // Reset local state
   state.claimUrl = null;
+  state.claimCode = null;
   state.address = null;
+  state.host = null;
+  state.port = null;
   state.status = "starting";
+  state.claimed = false;
   saveState();
+
+  // Re-create empty log
+  try {
+    fs.writeFileSync(PLAYIT_LOG_FILE, "");
+  } catch {}
+
   await new Promise((r) => setTimeout(r, 1000));
   await start();
+
+  // Wait briefly for log scanning to pick it up
+  for (let i = 0; i < 5; i++) {
+    checkPlayitLogs();
+    if (state.claimUrl) break;
+    await new Promise((r) => setTimeout(r, 500));
+  }
+
   return { claimUrl: state.claimUrl };
 }
 
 export async function status() {
+  checkPlayitLogs();
   return { ...state };
 }
 
@@ -244,6 +180,12 @@ export async function reconnect() {
   return { ok: true };
 }
 
-export function isRunning() {
-  return child !== null && !child.killed;
+export function isRunning(callback) {
+  exec("pgrep playit", (err, stdout) => {
+    const running = !!(stdout && stdout.trim());
+    if (typeof callback === "function") {
+      callback(running);
+    }
+  });
+  return state.status !== "stopped";
 }

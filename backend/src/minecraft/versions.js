@@ -151,12 +151,8 @@ export async function setPaperVersion(version, build) {
   const res = await fetch(downloadUrl);
   if (!res.ok) throw new Error(`Download failed with HTTP ${res.status}`);
 
-  const fileStream = fs.createWriteStream(tempJarPath);
-  await new Promise((resolve, reject) => {
-    res.body.pipe(fileStream);
-    res.body.on("error", reject);
-    fileStream.on("finish", resolve);
-  });
+  const jarBuffer = Buffer.from(await res.arrayBuffer());
+  fs.writeFileSync(tempJarPath, jarBuffer);
 
   // Replace jar safely
   if (fs.existsSync(jarPath)) {

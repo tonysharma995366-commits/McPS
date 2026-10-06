@@ -39,6 +39,7 @@ export async function getGeyserStatus() {
     floodgateInstalled,
     authType,
     bedrockAddress,
+    bedrockVersion: "1.26.52.3",
   };
 }
 
@@ -53,13 +54,13 @@ export async function installGeyser() {
   log.info("Downloading Geyser-Spigot.jar...");
   const geyserRes = await fetch(geyserUrl);
   if (!geyserRes.ok) throw new Error(`Failed to download Geyser: HTTP ${geyserRes.status}`);
-  const geyserBuffer = await geyserRes.buffer();
+  const geyserBuffer = Buffer.from(await geyserRes.arrayBuffer());
   fs.writeFileSync(GEYSER_JAR, geyserBuffer);
 
   log.info("Downloading floodgate.jar...");
   const floodRes = await fetch(floodgateUrl);
   if (!floodRes.ok) throw new Error(`Failed to download Floodgate: HTTP ${floodRes.status}`);
-  const floodBuffer = await floodRes.buffer();
+  const floodBuffer = Buffer.from(await floodRes.arrayBuffer());
   fs.writeFileSync(FLOODGATE_JAR, floodBuffer);
 
   log.info("Geyser and Floodgate installed successfully.");

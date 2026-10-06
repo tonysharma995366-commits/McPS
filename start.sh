@@ -92,7 +92,7 @@ fi
 echo "eula=true" > "$MC_DIR/eula.txt"
 
 # ─────────────────────────────────────
-# 5. INSTALL PLAYIT (if missing)
+# 5. INSTALL & START PLAYIT (background)
 # ─────────────────────────────────────
 if ! command -v playit >/dev/null 2>&1; then
   echo "[playit] Installing playit.gg agent..."
@@ -111,16 +111,20 @@ if ! command -v playit >/dev/null 2>&1; then
     || echo "[playit] WARN: install failed"
 fi
 
-  # Ensure playit config dir exists
-  mkdir -p "$HOME/.config/playit_gg"
+echo "[playit] Initializing Playit.gg CLI..."
+mkdir -p /root/.config/playit
+mkdir -p "$MC_DIR/logs"
 
-  # If PLAYIT_SECRET is set, write it to playit.toml
-  if [ -n "$PLAYIT_SECRET" ]; then
-    cat > "$HOME/.config/playit_gg/playit.toml" <<EOF
+if [ -n "$PLAYIT_SECRET" ]; then
+  cat > /root/.config/playit/playit.toml <<EOF
 secret_key = "$PLAYIT_SECRET"
 EOF
-    echo "[playit] Secret configured in playit.toml"
-  fi
+  echo "[playit] Secret configured in playit.toml"
+fi
+
+echo "[playit] Starting playit agent..."
+pkill playit || true
+playit --secret_path /root/.config/playit/playit.toml > "$MC_DIR/logs/playit.log" 2>&1 &
 
 # ─────────────────────────────────────
 # 6. START MINECRAFT (background)
