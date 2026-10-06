@@ -70,8 +70,20 @@ echo "eula=true" > "$MC_DIR/eula.txt"
 # 4. Playit agent
 if ! command -v playit >/dev/null 2>&1; then
   echo "[setup] Installing playit.gg agent..."
-  curl -fsSL https://playit.gg/install.sh | bash || true
-  export PATH="$HOME/.local/bin:$PATH"
+  PLAYIT_ARCH="$(uname -m)"
+  case "$PLAYIT_ARCH" in
+    x86_64) PLAYIT_BIN="playit-linux-amd64" ;;
+    aarch64) PLAYIT_BIN="playit-linux-aarch64" ;;
+    *) PLAYIT_BIN="playit-linux-amd64" ;;
+  esac
+
+  if curl -fsSL "https://github.com/playit-cloud/playit-agent/releases/latest/download/${PLAYIT_BIN}" \
+       -o /usr/local/bin/playit; then
+    chmod +x /usr/local/bin/playit
+    echo "[setup] playit installed to /usr/local/bin/playit"
+  else
+    echo "[setup] WARN: Could not install playit. Tunnel will be unavailable." >&2
+  fi
 fi
 
 if [ -n "$PLAYIT_SECRET" ]; then

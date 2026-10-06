@@ -126,7 +126,9 @@ async function checkEnvironment() {
 }
 
 // 8. Start server and attach WebSocket
-await checkEnvironment();
+checkEnvironment().catch((err) =>
+  log.warn("checkEnvironment failed: " + err.message)
+);
 
 const server = app.listen(CONFIG.port, "0.0.0.0", () => {
   log.info(`Backend listening on 0.0.0.0:${CONFIG.port}`);
