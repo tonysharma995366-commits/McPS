@@ -19,13 +19,20 @@ ENV DEBIAN_FRONTEND=noninteractive
 ENV NODE_ENV=production
 ENV HOME=/root
 
+# Install system deps (NO nodejs/npm from apt)
 RUN apt-get update && apt-get install -y --no-install-recommends \
       openjdk-17-jre-headless \
-      curl wget unzip ca-certificates \
-      nodejs npm \
-      tini procps \
-      zip \
+      curl wget unzip ca-certificates gnupg \
+      tini procps zip \
     && rm -rf /var/lib/apt/lists/*
+
+# Install Node.js 20 from NodeSource
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y nodejs \
+    && rm -rf /var/lib/apt/lists/*
+
+# Verify Node version
+RUN node -v && npm -v
 
 WORKDIR /app
 
