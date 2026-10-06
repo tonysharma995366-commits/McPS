@@ -1,8 +1,9 @@
 import { Router } from "express";
 import * as versions from "../minecraft/versions.js";
 import * as geyser from "../minecraft/geyser.js";
-import { logger as log } from "../utils/logger.js";
-import { restartServer } from "../minecraft/server.js";
+import logger from "../logger.js";
+const log = logger;
+import { restartServer } from "../minecraft/process.js";
 
 const router = Router();
 

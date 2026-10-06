@@ -1,8 +1,9 @@
 import fs from "fs";
 import path from "path";
 import fetch from "node-fetch";
-import { CONFIG } from "../utils/config.js";
-import { logger as log } from "../utils/logger.js";
+import { CONFIG } from "../config.js";
+import logger from "../logger.js";
+const log = logger;
 import * as playitAgent from "../playit/agent.js";
 
 const PLUGINS_DIR = path.join(CONFIG.mc.dir, "plugins");
