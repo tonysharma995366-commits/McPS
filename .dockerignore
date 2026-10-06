@@ -1,0 +1,12 @@
+**/node_modules
+**/.git
+**/.env
+**/.env.*
+**/*.log
+**/.DS_Store
+minecraft/
+frontend/dist
+frontend/.vite
+backend/tmp
+README.md
+.github/
