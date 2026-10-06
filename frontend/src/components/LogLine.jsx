@@ -1,4 +1,5 @@
 import React, { memo } from 'react';
+import { toStr } from '../lib/safe.js';
 
 /**
  * Format timestamp into HH:MM:SS
@@ -29,7 +30,7 @@ function detectLevel(log) {
   if (rawLevel.includes('INFO')) return 'INFO';
 
   // Fallback regex matching in message
-  const msg = log.message || '';
+  const msg = toStr(log.message);
   if (/\[.*WARN.*\]/i.test(msg)) return 'WARN';
   if (/\[.*ERR.*\]/i.test(msg)) return 'ERROR';
   if (/^<.+>/.test(msg)) return 'CHAT';
@@ -41,7 +42,8 @@ function detectLevel(log) {
 const LogLine = memo(function LogLine({ log }) {
   const level = detectLevel(log);
   const timeStr = formatTime(log.timestamp);
-  const isCommandInput = log.isOptimisticCommand || log.message?.startsWith('>');
+  const msgStr = toStr(log.message);
+  const isCommandInput = log.isOptimisticCommand || msgStr.startsWith('>');
 
   // Color config per spec
   let levelColor = 'text-[#6b7280]';
@@ -72,10 +74,10 @@ const LogLine = memo(function LogLine({ log }) {
       {isCommandInput ? (
         <span className="text-[#e5e7eb]">
           <span className="text-[#4ade80] font-bold mr-1 select-none">&gt;</span>
-          {log.message.replace(/^>\s*/, '')}
+          {msgStr.replace(/^>\s*/, '')}
         </span>
       ) : (
-        <span className={messageColor}>{log.message}</span>
+        <span className={messageColor}>{msgStr}</span>
       )}
     </div>
   );
