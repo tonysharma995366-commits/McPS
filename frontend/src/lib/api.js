@@ -82,6 +82,15 @@ async function request(endpoint, options = {}) {
 }
 
 export const api = {
+  // Generic HTTP helpers
+  get: (endpoint, options = {}) => request(endpoint, { ...options, method: 'GET' }),
+  post: (endpoint, body, options = {}) =>
+    request(endpoint, {
+      ...options,
+      method: 'POST',
+      body: body ? JSON.stringify(body) : undefined,
+    }),
+
   // Health & Ping
   getHealth: (signal) => request('/api/health', { signal }),
   ping: (signal) => request('/api/ping', { signal }),

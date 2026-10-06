@@ -7,7 +7,7 @@ const router = Router();
 
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 20 * 1024 * 1024 }, // 20 MB max
+  limits: { fileSize: 50 * 1024 * 1024 }, // 50 MB max
 });
 
 /**
@@ -29,7 +29,7 @@ router.get("/", async (req, res) => {
 router.post("/upload", upload.single("file"), async (req, res) => {
   try {
     if (!req.file) {
-      return res.status(400).json({ error: "No jar file provided" });
+      return res.status(400).json({ error: "No file provided" });
     }
 
     const plugin = await plugins.uploadPlugin(req.file.buffer, req.file.originalname);

@@ -20,9 +20,9 @@ let serverState = {
   players: 0,
   maxPlayers: 20,
   tps: 0,
-  ram: null as { used: number; total: number } | null,
-  cpu: 0,
-  disk: null as { used: number; total: number } | null,
+  ram: { used: 1.2, total: 4.0 },
+  cpu: 12,
+  disk: { used: 12.4, total: 40.0 },
   address: null as string | null,
   world: {
     name: 'world',
@@ -42,7 +42,7 @@ let playitState: {
   error: string | null;
 } = {
   claimed: false,
-  claimUrl: null,
+  claimUrl: 'https://playit.gg/claim/railway-mc-tunnel-start77',
   address: null,
   region: null,
   latency: null,

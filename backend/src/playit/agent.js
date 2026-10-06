@@ -1,4 +1,4 @@
-import { exec } from "node:child_process";
+import { exec, execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { CONFIG } from "../config.js";
@@ -90,6 +90,45 @@ function checkPlayitLogs() {
   }
 }
 
+function ensurePlayitInstalled() {
+  const binPath = "/usr/local/bin/playit";
+  if (fs.existsSync(binPath)) {
+    return binPath;
+  }
+
+  const localBinPath = path.join(CONFIG.mc.dir, "playit");
+  if (fs.existsSync(localBinPath)) {
+    return localBinPath;
+  }
+
+  logger.info("[playit] playit binary missing. Downloading...");
+  try {
+    const arch = process.arch; // 'x64' | 'arm64'
+    let playitBinName = "playit-linux-amd64";
+    if (arch === "arm64") {
+      playitBinName = "playit-linux-aarch64";
+    }
+
+    const downloadUrl = `https://github.com/playit-cloud/playit-agent/releases/latest/download/${playitBinName}`;
+    
+    // Create directory
+    fs.mkdirSync(CONFIG.mc.dir, { recursive: true });
+
+    // Download playit locally using curl or wget
+    logger.info(`[playit] Downloading playit agent from ${downloadUrl}...`);
+    try {
+      execSync(`curl -fsSL "${downloadUrl}" -o "${localBinPath}" && chmod +x "${localBinPath}"`);
+    } catch {
+      execSync(`wget -q "${downloadUrl}" -O "${localBinPath}" && chmod +x "${localBinPath}"`);
+    }
+    logger.info(`[playit] Successfully downloaded playit agent to ${localBinPath}`);
+    return localBinPath;
+  } catch (err) {
+    logger.error(`[playit] Failed to download playit binary: ${err.message}`);
+    return null;
+  }
+}
+
 export async function start() {
   loadState();
 
@@ -107,10 +146,11 @@ export async function start() {
   }
 
   // Ensure playit agent is running
+  const resolvedBin = ensurePlayitInstalled() || "playit";
   isRunning((running) => {
     if (!running) {
-      logger.info("[playit] Spawning playit agent in background...");
-      exec(`playit --secret_path ${path.join(PLAYIT_CONFIG_DIR, "playit.toml")} > ${PLAYIT_LOG_FILE} 2>&1 &`);
+      logger.info(`[playit] Spawning playit agent in background using ${resolvedBin}...`);
+      exec(`"${resolvedBin}" --secret_path ${path.join(PLAYIT_CONFIG_DIR, "playit.toml")} > ${PLAYIT_LOG_FILE} 2>&1 &`);
     }
   });
 

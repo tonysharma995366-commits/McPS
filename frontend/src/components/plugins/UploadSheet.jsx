@@ -23,15 +23,18 @@ export default function UploadSheet({
     const file = e.target.files?.[0];
     if (!file) return;
 
+    const allowed = ['.jar', '.mcaddon', '.mcpack', '.zip'];
+    const ext = '.' + file.name.split('.').pop().toLowerCase();
+
     // Validate extension
-    if (!file.name.toLowerCase().endsWith('.jar')) {
-      showToast?.('Only .jar plugin files are allowed', 'error');
+    if (!allowed.includes(ext)) {
+      showToast?.('Only .jar, .mcaddon, .mcpack, and .zip files are allowed', 'error');
       return;
     }
 
-    // Validate size: max 20 MB
-    if (file.size > 20 * 1024 * 1024) {
-      showToast?.('File exceeds maximum size of 20 MB', 'error');
+    // Validate size: max 50 MB
+    if (file.size > 50 * 1024 * 1024) {
+      showToast?.('File exceeds maximum size of 50 MB', 'error');
       return;
     }
 
@@ -59,13 +62,13 @@ export default function UploadSheet({
   };
 
   return (
-    <BottomSheet isOpen={isOpen} onClose={onClose} title="Add New Plugin">
+    <BottomSheet isOpen={isOpen} onClose={onClose} title="Add Plugin or Bedrock Addon">
       <div className="space-y-4">
         {/* Hidden File Input */}
         <input
           ref={fileInputRef}
           type="file"
-          accept=".jar"
+          accept=".jar,.mcaddon,.mcpack,.zip"
           className="hidden"
           onChange={handleFileChange}
         />
@@ -80,13 +83,13 @@ export default function UploadSheet({
               <Upload size={24} />
             </div>
             <h4 className="text-[14px] font-semibold text-[#e5e7eb] mb-1">
-              Tap to select .jar file
+              Tap to select file (.jar, .mcaddon, .mcpack, .zip)
             </h4>
             <p className="text-[12px] text-[#9ca3af]">
               Upload directly from your device
             </p>
             <span className="text-[11px] text-[#6b7280] mt-2">
-              Max size: 20 MB
+              Max size: 50 MB
             </span>
           </div>
         ) : (

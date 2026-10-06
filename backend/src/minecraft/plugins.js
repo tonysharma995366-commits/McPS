@@ -56,12 +56,15 @@ export async function listPlugins() {
   const plugins = [];
 
   // Helper to read a directory
-  async function readFolder(folderPath, isEnabled) {
+  async function readFolder(folderPath, isEnabled, type = "Java Plugin") {
     if (!fs.existsSync(folderPath)) return;
     const entries = await fsp.readdir(folderPath, { withFileTypes: true });
 
     for (const entry of entries) {
-      if (!entry.isFile() || !entry.name.toLowerCase().endsWith(".jar")) continue;
+      if (!entry.isFile()) continue;
+      const ext = path.extname(entry.name).toLowerCase();
+      if (type === "Java Plugin" && ext !== ".jar") continue;
+      if (type === "Bedrock Pack" && ![".mcpack", ".mcaddon", ".zip"].includes(ext)) continue;
 
       const fullPath = path.join(folderPath, entry.name);
       let sizeStr = "1.0 MB";
@@ -75,7 +78,9 @@ export async function listPlugins() {
         // ignore
       }
 
-      const { name, version } = parsePluginDetails(entry.name);
+      const clean = entry.name.slice(0, -ext.length);
+      const name = clean.charAt(0).toUpperCase() + clean.slice(1);
+      const version = "v1.0.0";
       const pluginId = entry.name.toLowerCase().replace(/[^a-z0-9]/g, "-");
       const savedMeta = meta[entry.name] || {};
 
@@ -86,18 +91,21 @@ export async function listPlugins() {
         version: savedMeta.version || version,
         size: sizeStr,
         enabled: isEnabled,
-        author: savedMeta.author || null,
-        description: savedMeta.description || `${name} Minecraft plugin`,
+        author: savedMeta.author || (type === "Bedrock Pack" ? "Bedrock Addon" : "Community"),
+        description: savedMeta.description || `${name} (${type})`,
         installedAt: savedMeta.installedAt || updatedAt,
         updatedAt: savedMeta.updatedAt || updatedAt,
         updateAvailable: Boolean(savedMeta.updateAvailable),
         needsRestart: false,
+        type: savedMeta.type || type,
       });
     }
   }
 
-  await readFolder(PLUGINS_DIR, true);
-  await readFolder(DISABLED_DIR, false);
+  await readFolder(PLUGINS_DIR, true, "Java Plugin");
+  await readFolder(DISABLED_DIR, false, "Java Plugin");
+  await readFolder(path.join(CONFIG.mc.dir, "plugins", "Geyser-Spigot", "packs"), true, "Bedrock Pack");
+  await readFolder(path.join(CONFIG.mc.dir, "plugins", "Geyser-Spigot", "packs-disabled"), false, "Bedrock Pack");
 
   return plugins;
 }
@@ -113,8 +121,34 @@ export async function togglePlugin(id) {
     throw new Error(`Plugin not found: ${id}`);
   }
 
-  const meta = (await readJsonSafe(META_FILE, {})) || {};
   const isEnabled = plugin.enabled;
+  const meta = (await readJsonSafe(META_FILE, {})) || {};
+
+  if (plugin.type === "Bedrock Pack") {
+    const packsDir = path.join(CONFIG.mc.dir, "plugins", "Geyser-Spigot", "packs");
+    const disabledDir = path.join(CONFIG.mc.dir, "plugins", "Geyser-Spigot", "packs-disabled");
+    await ensureDir(disabledDir);
+    await ensureDir(packsDir);
+
+    const sourcePath = safeJoin(isEnabled ? packsDir : disabledDir, plugin.filename);
+    const destPath = safeJoin(isEnabled ? disabledDir : packsDir, plugin.filename);
+
+    await fsp.rename(sourcePath, destPath);
+
+    meta[plugin.filename] = {
+      ...(meta[plugin.filename] || {}),
+      enabled: !isEnabled,
+      updatedAt: new Date().toISOString(),
+    };
+    await writeJsonSafe(META_FILE, meta);
+
+    return {
+      ...plugin,
+      enabled: !isEnabled,
+      needsRestart: true,
+    };
+  }
+
   const sourcePath = safeJoin(isEnabled ? PLUGINS_DIR : DISABLED_DIR, plugin.filename);
   const destPath = safeJoin(isEnabled ? DISABLED_DIR : PLUGINS_DIR, plugin.filename);
 
@@ -147,18 +181,27 @@ export async function deletePlugin(id) {
     throw new Error(`Plugin not found: ${id}`);
   }
 
-  const jarPath = safeJoin(plugin.enabled ? PLUGINS_DIR : DISABLED_DIR, plugin.filename);
-  if (fs.existsSync(jarPath)) {
-    await fsp.unlink(jarPath);
-  }
+  if (plugin.type === "Bedrock Pack") {
+    const packsDir = path.join(CONFIG.mc.dir, "plugins", "Geyser-Spigot", "packs");
+    const disabledDir = path.join(CONFIG.mc.dir, "plugins", "Geyser-Spigot", "packs-disabled");
+    const jarPath = safeJoin(plugin.enabled ? packsDir : disabledDir, plugin.filename);
+    if (fs.existsSync(jarPath)) {
+      await fsp.unlink(jarPath);
+    }
+  } else {
+    const jarPath = safeJoin(plugin.enabled ? PLUGINS_DIR : DISABLED_DIR, plugin.filename);
+    if (fs.existsSync(jarPath)) {
+      await fsp.unlink(jarPath);
+    }
 
-  // Remove plugin config directory if it exists
-  const configDir = safeJoin(PLUGINS_DIR, plugin.name);
-  if (fs.existsSync(configDir)) {
-    try {
-      await fsp.rm(configDir, { recursive: true, force: true });
-    } catch {
-      // ignore
+    // Remove plugin config directory if it exists
+    const configDir = safeJoin(PLUGINS_DIR, plugin.name);
+    if (fs.existsSync(configDir)) {
+      try {
+        await fsp.rm(configDir, { recursive: true, force: true });
+      } catch {
+        // ignore
+      }
     }
   }
 
@@ -171,30 +214,34 @@ export async function deletePlugin(id) {
 }
 
 /**
- * Uploads and registers a new plugin jar file.
+ * Uploads and registers a new plugin jar or bedrock pack file.
  */
 export async function uploadPlugin(fileBuffer, originalName) {
-  if (!originalName.toLowerCase().endsWith(".jar")) {
-    throw new Error("Only .jar plugin files are allowed");
+  const ext = path.extname(originalName).toLowerCase();
+  const allowedExtensions = [".jar", ".mcaddon", ".mcpack", ".zip"];
+  if (!allowedExtensions.includes(ext)) {
+    throw new Error("Only .jar, .mcaddon, .mcpack, and .zip files are allowed");
   }
 
-  if (fileBuffer.length > 20 * 1024 * 1024) {
-    throw new Error("Plugin file exceeds maximum allowed size (20 MB)");
+  if (fileBuffer.length > 50 * 1024 * 1024) {
+    throw new Error("File exceeds maximum allowed size (50 MB)");
   }
 
-  await ensureDir(PLUGINS_DIR);
+  const isBedrockPack = [".mcaddon", ".mcpack", ".zip"].includes(ext);
+  const targetFolder = isBedrockPack 
+    ? path.join(CONFIG.mc.dir, "plugins", "Geyser-Spigot", "packs")
+    : PLUGINS_DIR;
+
+  await ensureDir(targetFolder);
   let cleanName = sanitizeFilename(originalName);
-  if (!cleanName.toLowerCase().endsWith(".jar")) {
-    cleanName += ".jar";
-  }
 
-  let targetPath = safeJoin(PLUGINS_DIR, cleanName);
+  let targetPath = safeJoin(targetFolder, cleanName);
   let counter = 1;
 
   while (fs.existsSync(targetPath)) {
-    const base = cleanName.replace(/\.jar$/i, "");
-    cleanName = `${base}-${counter++}.jar`;
-    targetPath = safeJoin(PLUGINS_DIR, cleanName);
+    const base = cleanName.slice(0, -ext.length);
+    cleanName = `${base}-${counter++}${ext}`;
+    targetPath = safeJoin(targetFolder, cleanName);
   }
 
   await atomicWrite(targetPath, fileBuffer);
@@ -209,10 +256,11 @@ export async function uploadPlugin(fileBuffer, originalName) {
     enabled: true,
     installedAt: now,
     updatedAt: now,
+    type: isBedrockPack ? "Bedrock Pack" : "Java Plugin",
   };
 
   await writeJsonSafe(META_FILE, meta);
-  log.info(`Uploaded new plugin: ${cleanName}`);
+  log.info(`Uploaded new file: ${cleanName}`);
 
   return {
     id: cleanName.toLowerCase().replace(/[^a-z0-9]/g, "-"),
@@ -222,6 +270,7 @@ export async function uploadPlugin(fileBuffer, originalName) {
     size: formatBytes(fileBuffer.length),
     enabled: true,
     needsRestart: true,
+    type: isBedrockPack ? "Bedrock Pack" : "Java Plugin",
   };
 }
 
