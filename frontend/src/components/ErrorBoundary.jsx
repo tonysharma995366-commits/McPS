@@ -1,5 +1,6 @@
 import React from 'react';
 import { AlertTriangle, RotateCw, Home, ChevronDown } from 'lucide-react';
+import { safeString } from '../lib/safeString.js';
 
 /**
  * Top-level application Error Boundary.
@@ -71,7 +72,7 @@ export default class ErrorBoundary extends React.Component {
 
                 {this.state.showDetails && (
                   <pre className="mt-2 p-3 rounded-[8px] bg-[#0f1115] border border-[#262a33] text-[11px] font-mono text-[#ef4444] overflow-x-auto whitespace-pre-wrap max-h-36">
-                    {this.state.error.toString()}
+                    {safeString(this.state.error?.message || String(this.state.error || ""))}
                   </pre>
                 )}
               </div>

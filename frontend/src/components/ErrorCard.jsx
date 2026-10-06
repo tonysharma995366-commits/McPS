@@ -1,7 +1,9 @@
 import React from "react";
 import { AlertTriangle } from "lucide-react";
+import { safeErrorMessage } from "../lib/safeString.js";
 
 export function ErrorCard({ message, onRetry }) {
+  const safeMsg = safeErrorMessage(message);
   return (
     <div className="rounded-[12px] bg-[#1a1d24] border border-[#ef4444]/40 p-4 select-none">
       <div className="flex items-start gap-3">
@@ -11,7 +13,7 @@ export function ErrorCard({ message, onRetry }) {
             Cannot reach server
           </p>
           <p className="text-[12px] text-[#9ca3af] mt-1 font-mono break-all">
-            {message}
+            {safeMsg || "Network error"}
           </p>
         </div>
       </div>

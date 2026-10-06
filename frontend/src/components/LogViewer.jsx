@@ -1,6 +1,7 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { Terminal, ArrowDown } from 'lucide-react';
 import LogLine from './LogLine.jsx';
+import { safeString } from '../lib/safeString.js';
 
 /**
  * Scrollable Log Viewer
@@ -82,7 +83,7 @@ export default function LogViewer({ logs = [], isLoading = false }) {
               </div>
             )}
             {displayLogs.map((log, index) => {
-              const uniqueKey = log.id || `${log.timestamp}-${index}-${log.message?.substring(0, 16)}`;
+              const uniqueKey = log.id || `${log.timestamp}-${index}-${safeString(log.message, 16)}`;
               return <LogLine key={uniqueKey} log={log} />;
             })}
           </div>

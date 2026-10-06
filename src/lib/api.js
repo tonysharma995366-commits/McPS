@@ -55,18 +55,15 @@ async function request(endpoint, options = {}) {
       if (consecutiveFailures >= 3) {
         notifyNetworkStatus(true);
       }
-      let errMessage = `HTTP ${res.status}: ${res.statusText}`;
+      let msg = "Request failed";
       try {
-        const errJson = await res.json();
-        if (errJson && errJson.message) {
-          errMessage = errJson.message;
-        } else if (errJson && errJson.error) {
-          errMessage = errJson.error;
-        }
+        const data = await res.json();
+        msg = data?.message ?? data?.error ?? `HTTP ${res.status}`;
+        if (typeof msg !== "string") msg = JSON.stringify(msg);
       } catch {
-        // ignore parse error
+        msg = `HTTP ${res.status}`;
       }
-      throw new Error(errMessage);
+      throw new Error(msg);
     }
 
     if (consecutiveFailures >= 3) {
