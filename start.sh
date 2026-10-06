@@ -1,59 +1,83 @@
 #!/usr/bin/env bash
 set -e
 
-echo "═══════════════════════════════════════════"
-echo "  MC RailAdmin — Starting"
-echo "═══════════════════════════════════════════"
+echo "════════════════════════════════════════════"
+echo "  MC RailAdmin — All-in-One Boot"
+echo "════════════════════════════════════════════"
 
 MC_DIR="${MC_DIR:-/app/minecraft}"
 LOG_DIR="$MC_DIR/logs"
-PORT="${PORT:-3000}"
+PORT="${PORT:-8080}"
+VNC_PORT=5901
+NOVNC_PORT=6080
 
 mkdir -p "$MC_DIR/plugins" "$MC_DIR/plugins-disabled" \
          "$LOG_DIR" "$MC_DIR/backups"
 
-# 1. Download Paper if missing
+# ─────────────────────────────────────
+# 1. START VNC DESKTOP (background)
+# ─────────────────────────────────────
+echo "[vnc] Starting XFCE desktop..."
+vncserver :1 -localhost no -SecurityTypes None \
+  -geometry 1024x768 --I-KNOW-THIS-IS-INSECURE \
+  > "$LOG_DIR/vnc.log" 2>&1 \
+  && echo "[vnc] Desktop running on :$VNC_PORT" \
+  || echo "[vnc] WARN: vncserver failed"
+
+# ─────────────────────────────────────
+# 2. START noVNC (background)
+# ─────────────────────────────────────
+echo "[vnc] Starting noVNC websockify..."
+cd /root
+openssl req -new -subj "/C=JP" -x509 -days 365 -nodes \
+  -out /root/self.pem -keyout /root/self.pem 2>/dev/null
+
+websockify -D --web=/usr/share/novnc/ --cert=/root/self.pem \
+  "$NOVNC_PORT" "localhost:$VNC_PORT" \
+  > "$LOG_DIR/novnc.log" 2>&1 \
+  && echo "[vnc] noVNC listening on :$NOVNC_PORT" \
+  || echo "[vnc] WARN: websockify failed"
+
+# ─────────────────────────────────────
+# 3. DOWNLOAD PAPER (if missing)
+# ─────────────────────────────────────
 if [ ! -f "$MC_DIR/server.jar" ]; then
   MC_VERSION="${MC_VERSION:-1.20.4}"
-  echo "[setup] Fetching latest Paper $MC_VERSION build..."
+  echo "[mc] Fetching latest Paper $MC_VERSION build..."
 
-  # Try new PaperMC API (fill.papermc.io/v3)
   LATEST=$(curl -fsSL \
     "https://fill.papermc.io/v3/projects/paper/versions/$MC_VERSION/builds/latest" \
-    | grep -oE '"id":[0-9]+' | head -1 | grep -oE '[0-9]+' || true)
+    | grep -oE '"id":[0-9]+' | head -1 | grep -oE '[0-9]+' \
+    || echo "")
 
+  JAR_URL=""
   if [ -n "$LATEST" ]; then
     JAR_URL=$(curl -fsSL \
       "https://fill.papermc.io/v3/projects/paper/versions/$MC_VERSION/builds/$LATEST" \
-      | grep -oE '"url":"[^"]+\.jar"' | head -1 | sed 's/"url":"//;s/"$//' || true)
+      | grep -oE '"url":"[^"]+\.jar"' | head -1 \
+      | sed 's/"url":"//;s/"$//')
   fi
 
-  # Fallback to direct download URL pattern if v3 lookup fails
-  if [ -z "$JAR_URL" ]; then
-    echo "[setup] Using Paper v2 API fallback for $MC_VERSION..."
-    BUILD_JSON=$(curl -fsSL "https://api.papermc.io/v2/projects/paper/versions/$MC_VERSION" || true)
-    LATEST=$(echo "$BUILD_JSON" | grep -oE '"builds":\[[0-9,]+' | grep -oE '[0-9]+$' || true)
-    if [ -n "$LATEST" ]; then
-      JAR_URL="https://api.papermc.io/v2/projects/paper/versions/$MC_VERSION/builds/$LATEST/downloads/paper-$MC_VERSION-$LATEST.jar"
-    fi
+  if [ -z "$JAR_URL" ] || [ -z "$LATEST" ]; then
+    echo "[mc] Fallback to legacy Paper API..."
+    LATEST="499"
+    JAR_URL="https://api.papermc.io/v2/projects/paper/versions/$MC_VERSION/builds/$LATEST/downloads/paper-$MC_VERSION-$LATEST.jar"
   fi
 
-  if [ -z "$JAR_URL" ]; then
-    echo "[setup] ERROR: Could not determine Paper jar download URL" >&2
-    exit 1
-  fi
-
-  curl -fsSL "$JAR_URL" -o "$MC_DIR/server.jar"
-  echo "[setup] Downloaded Paper build $LATEST"
+  echo "[mc] Downloading: $JAR_URL"
+  curl -fsSL "$JAR_URL" -o "$MC_DIR/server.jar" \
+    && echo "[mc] Downloaded Paper build $LATEST" \
+    || echo "[mc] ERROR: Download failed"
 fi
 
-# 2. server.properties
+# ─────────────────────────────────────
+# 4. server.properties + EULA
+# ─────────────────────────────────────
 if [ ! -f "$MC_DIR/server.properties" ]; then
-  echo "[setup] Writing default server.properties"
   cat > "$MC_DIR/server.properties" <<EOF
 server-port=${MC_SERVER_PORT:-25565}
 motd=Railway MC Server
-online-mode=true
+online-mode=false
 enable-rcon=true
 rcon.port=${RCON_PORT:-25575}
 rcon.password=${RCON_PASSWORD:-changeme}
@@ -62,14 +86,16 @@ view-distance=6
 simulation-distance=6
 white-list=false
 EOF
+  echo "[mc] Wrote default server.properties"
 fi
 
-# 3. EULA
 echo "eula=true" > "$MC_DIR/eula.txt"
 
-# 4. Playit agent
+# ─────────────────────────────────────
+# 5. INSTALL PLAYIT (if missing)
+# ─────────────────────────────────────
 if ! command -v playit >/dev/null 2>&1; then
-  echo "[setup] Installing playit.gg agent..."
+  echo "[playit] Installing playit.gg agent..."
   PLAYIT_ARCH="$(uname -m)"
   case "$PLAYIT_ARCH" in
     x86_64) PLAYIT_BIN="playit-linux-amd64" ;;
@@ -77,13 +103,12 @@ if ! command -v playit >/dev/null 2>&1; then
     *) PLAYIT_BIN="playit-linux-amd64" ;;
   esac
 
-  if curl -fsSL "https://github.com/playit-cloud/playit-agent/releases/latest/download/${PLAYIT_BIN}" \
-       -o /usr/local/bin/playit; then
-    chmod +x /usr/local/bin/playit
-    echo "[setup] playit installed to /usr/local/bin/playit"
-  else
-    echo "[setup] WARN: Could not install playit. Tunnel will be unavailable." >&2
-  fi
+  curl -fsSL \
+    "https://github.com/playit-cloud/playit-agent/releases/latest/download/${PLAYIT_BIN}" \
+    -o /usr/local/bin/playit \
+    && chmod +x /usr/local/bin/playit \
+    && echo "[playit] Installed to /usr/local/bin/playit" \
+    || echo "[playit] WARN: install failed"
 fi
 
 if [ -n "$PLAYIT_SECRET" ]; then
@@ -91,18 +116,26 @@ if [ -n "$PLAYIT_SECRET" ]; then
   cat > "$HOME/.config/playit_gg/playit.toml" <<EOF
 secret_key = "$PLAYIT_SECRET"
 EOF
-  echo "[setup] playit secret configured"
+  echo "[playit] Secret configured"
 fi
 
-# 5. Minecraft server (background)
-echo "[setup] Starting Minecraft server..."
-cd "$MC_DIR"
-nohup java -Xms"${MC_RAM_MIN:-512M}" -Xmx"${MC_RAM_MAX:-1536M}" \
-      -jar server.jar nogui > "$LOG_DIR/console.log" 2>&1 &
-echo $! > "$MC_DIR/mc.pid"
-echo "[setup] Minecraft PID: $(cat $MC_DIR/mc.pid)"
+# ─────────────────────────────────────
+# 6. START MINECRAFT (background)
+# ─────────────────────────────────────
+if [ -f "$MC_DIR/server.jar" ]; then
+  echo "[mc] Starting Minecraft server..."
+  cd "$MC_DIR"
+  nohup java -Xms"${MC_RAM_MIN:-512M}" -Xmx"${MC_RAM_MAX:-1536M}" \
+    -jar server.jar nogui > "$LOG_DIR/console.log" 2>&1 &
+  echo $! > "$MC_DIR/mc.pid"
+  echo "[mc] Minecraft PID: $(cat $MC_DIR/mc.pid)"
+else
+  echo "[mc] WARN: server.jar missing — skipping MC start"
+fi
 
-# 6. Backend (foreground)
-echo "[setup] Starting backend on :$PORT"
+# ─────────────────────────────────────
+# 7. START BACKEND (foreground)
+# ─────────────────────────────────────
+echo "[backend] Starting Node.js on :$PORT"
 cd /app/backend
 exec node src/index.js

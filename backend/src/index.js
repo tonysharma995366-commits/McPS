@@ -10,6 +10,7 @@ import * as playitAgent from "./playit/agent.js";
 import { attach as attachLogsWs } from "./websocket/logs.js";
 import { ensureDir } from "./utils/files.js";
 import apiRouter from "./routes/index.js";
+import httpProxy from "http-proxy";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -36,6 +37,19 @@ if (CONFIG.env !== "test") {
 
 // 3. Mount API routes at /api
 app.use("/api", apiRouter);
+
+const vncProxy = httpProxy.createProxyServer({
+  target: "http://localhost:6080",
+  ws: true,
+  changeOrigin: true,
+});
+
+// Proxy /vnc/* to noVNC
+app.use("/vnc", (req, res) => {
+  vncProxy.web(req, res, {}, (err) => {
+    res.status(502).json({ error: "VNC not available" });
+  });
+});
 
 // 4. Serve static frontend build if present (e.g. ../../frontend/dist or ../../dist)
 const potentialDistPaths = [
@@ -139,6 +153,13 @@ const server = app.listen(CONFIG.port, "0.0.0.0", () => {
 
   // Attach WebSocket server for live logs on /ws/logs
   attachLogsWs(server);
+
+  server.on("upgrade", (req, socket, head) => {
+    if (req.url.startsWith("/vnc")) {
+      vncProxy.ws(req, socket, head);
+      return;
+    }
+  });
 
   // Fire-and-forget non-blocking RCON connection attempt
   rcon.connect().then((conn) => {
